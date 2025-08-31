@@ -1,0 +1,67 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: whistleblow
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d whistleblow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/whistleblow"
+      JWT_SECRET: "change-me-in-prod"
+      CSRF_SECRET: "change-me-in-prod"
+      ENCRYPTION_MASTER_KEY_BASE64: "${ENCRYPTION_MASTER_KEY_BASE64:-REPLACE_WITH_BASE64_32_BYTES}"
+      FILE_STORAGE_DIR: "/data/uploads"
+      MAIL_FROM: "no-reply@example.local"
+      SMTP_HOST: "mailhog"
+      SMTP_PORT: "1025"
+      ALLOWED_ORIGINS: "http://localhost:4173"
+      PRISMA_SEED_ON_START: "1"
+    volumes:
+      - api-uploads:/data/uploads
+      - ./api/prisma:/app/prisma
+    ports:
+      - "4000:4000"
+    depends_on:
+      - postgres
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_BASE_URL: "http://localhost:4000"
+    ports:
+      - "5173:4173"
+    depends_on:
+      - api
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+volumes:
+  postgres-data:
+  api-uploads:

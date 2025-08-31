@@ -1,0 +1,40 @@
+# Stage 1: deps + build
+FROM node:20-alpine AS builder
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Install tools required for prisma binary build
+RUN apk add --no-cache libc6-compat bash openssl
+
+COPY package.json package-lock.json* tsconfig.json prisma/ ./ 
+COPY prisma ./prisma
+RUN npm ci --production=false
+
+COPY . .
+RUN npm run prisma:gen || true
+RUN npm run build
+
+# Stage 2: runtime
+FROM node:20-alpine AS runtime
+WORKDIR /app
+RUN apk add --no-cache bash ca-certificates
+
+# Create a user for running the app
+RUN addgroup -S app && adduser -S app -G app
+USER app
+
+COPY --from=builder /app/package.json /app/package-lock.json* /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/prisma ./prisma
+
+ENV NODE_ENV=production
+ENV PORT=4000
+
+# Expose port
+EXPOSE 4000
+
+# Entrypoint will run migrations and seed, then start server
+COPY ./entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+CMD ["/app/entrypoint.sh"]

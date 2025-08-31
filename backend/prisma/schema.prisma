@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role
+  // Officials only
+  reportsToId  String?  // who this user reports to (their direct supervisor)
+  reportsTo    User?    @relation("ReportsTo", fields: [reportsToId], references: [id])
+  subordinates User[]   @relation("ReportsTo")
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  complaints   Complaint[]   @relation("Complainant")
+}
+
+enum Role {
+  USER
+  OFFICIAL
+  ACO     // anti‑corruption officer
+  ADMIN
+}
+
+model Complaint {
+  id            String   @id @default(cuid())
+  title         String
+  // Encrypted fields (ciphertext stored as base64)
+  bodyCipher    String
+  bodyIv        String
+
+  // relationships
+  complainantId String
+  complainant   User     @relation("Complainant", fields: [complainantId], references: [id])
+
+  accusedId     String   // the accused user (employee)
+  accused       User     @relation(fields: [accusedId], references: [id])
+
+  category      String
+  priority      Int      // 1 (highest) .. 5 (lowest)
+  status        Status   @default(OPEN)
+
+  attachments   Attachment[]
+  auditEvents   AuditEvent[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+enum Status {
+  OPEN
+  UNDER_REVIEW
+  ESCALATED
+  RESOLVED
+  REJECTED
+}
+
+model Attachment {
+  id           String   @id @default(cuid())
+  complaintId  String
+  complaint    Complaint @relation(fields: [complaintId], references: [id])
+
+  filename     String
+  mimeType     String
+  size         Int
+  // encrypted on disk? here we store metadata; actual file is on FS or S3
+  metaCipher   String
+  metaIv       String
+
+  createdAt    DateTime @default(now())
+}
+
+model AuditEvent {
+  id           String   @id @default(cuid())
+  complaintId  String
+  complaint    Complaint @relation(fields: [complaintId], references: [id])
+
+  actorId      String
+  action       String
+  note         String?
+  createdAt    DateTime @default(now())
+}
